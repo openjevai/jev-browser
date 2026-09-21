@@ -1,184 +1,94 @@
-// Jev transport: TypeSafe direct (default), OpenRouter Decisions, or
-// Cloudflare Workers AI. All speak the {state, questions} / answers contract;
-// URL, auth, and model slugs differ. Proxies add hops, so direct TypeSafe
-// remains the recommended default.
-
-import { experimental_evaluate } from "ai";
-import { TypeSafeClient } from "@typesafe-ai/sdk";
-
-export type JevProvider = "typesafe" | "openrouter" | "cloudflare" | "vercel";
-
+// The only model transport. Host agents supply all generated text.
+export interface JevConfig { url: string; key: string; model: string }
+export interface ChoiceAnswer {
+  type: "choice";
+  choice: string;
+  probabilities: Record<string, number>;
+  confidence: number | null;
+}
+export interface NoulAnswer { type: "noul"; noul: number }
+export type Answer = ChoiceAnswer | NoulAnswer;
+export interface Question { type: "choice" | "noul"; instructions: string; criteria?: Record<string, string> }
 export interface AskResult {
-  answers: Record<string, any>;
-  usage: { input_tokens: number; output_tokens: number };
-  provider: JevProvider;
+  answers: Record<string, Answer>;
+  usage: { input_tokens: number | null; output_tokens: number | null };
   model: string;
 }
 
-const X_TITLE = "jev-browser";
-const REFERER = "https://github.com/jkudish/jev-browser";
-
-let typesafeClient: TypeSafeClient | null = null;
-
-function resolve(env: NodeJS.ProcessEnv): JevProvider {
-  const explicit = (env.JEV_PROVIDER ?? "auto").toLowerCase();
-  const hasTypesafe = Boolean(env.TYPESAFE_API_KEY);
-  const hasOpenRouter = /^sk-or-/.test(env.OPENROUTER_API_KEY ?? "");
-  const cfToken = env.JEV_CLOUDFLARE_API_TOKEN || env.CLOUDFLARE_API_TOKEN;
-  const hasCloudflare = Boolean(cfToken && env.CLOUDFLARE_ACCOUNT_ID);
-
-  if (explicit === "typesafe") {
-    if (!hasTypesafe) throw new Error("JEV_PROVIDER=typesafe but TYPESAFE_API_KEY is not set.");
-    return "typesafe";
+export function resolveConfig(env: NodeJS.ProcessEnv = process.env): JevConfig {
+  if (!env.JEV_API_URL || !env.JEV_API_KEY?.trim()) {
+    throw new Error("Set JEV_API_URL to the complete Jev inference endpoint and JEV_API_KEY to its key. Legacy TYPESAFE_API_KEY, OPENROUTER_API_KEY, JEV_PROVIDER and JEV_BROWSER_TYPE_* configuration is no longer used.");
   }
-  if (explicit === "openrouter") {
-    if (!hasOpenRouter) throw new Error("JEV_PROVIDER=openrouter but OPENROUTER_API_KEY is not set or not an sk-or- key.");
-    return "openrouter";
+  let url: URL;
+  try { url = new URL(env.JEV_API_URL); } catch { throw new Error("JEV_API_URL must be a complete HTTP(S) inference endpoint."); }
+  if (!["https:", "http:"].includes(url.protocol) || url.username || url.password || url.hash || url.pathname === "/") {
+    throw new Error("JEV_API_URL must be a complete HTTP(S) inference endpoint without credentials or a fragment.");
   }
-  if (explicit === "vercel") {
-    if (!env.AI_GATEWAY_API_KEY) throw new Error("JEV_PROVIDER=vercel but AI_GATEWAY_API_KEY is not set.");
-    return "vercel";
-  }
-  if (explicit === "cloudflare") {
-    if (!hasCloudflare) throw new Error("JEV_PROVIDER=cloudflare but a Cloudflare API token (CLOUDFLARE_API_TOKEN or JEV_CLOUDFLARE_API_TOKEN) and CLOUDFLARE_ACCOUNT_ID are not both set.");
-    return "cloudflare";
-  }
-  if (hasTypesafe) return "typesafe";
-  if (hasOpenRouter) return "openrouter";
-  if (hasCloudflare) return "cloudflare";
-  if (env.AI_GATEWAY_API_KEY) return "vercel";
-  throw new Error(
-    "No TYPESAFE_API_KEY, OPENROUTER_API_KEY (sk-or-), or Cloudflare token + CLOUDFLARE_ACCOUNT_ID found. Set one, or JEV_PROVIDER to choose explicitly.",
-  );
+  if (/[\r\n]/.test(env.JEV_API_KEY)) throw new Error("JEV_API_KEY must not contain line breaks.");
+  const model = env.JEV_MODEL?.trim() || (url.hostname === "openrouter.ai" ? "typesafe/jev-1.13" : "jev-latest");
+  return { url: url.href, key: env.JEV_API_KEY, model };
 }
-
-export async function askJev(
-  state: unknown,
-  questions: Record<string, unknown>,
-  model: string,
-  signal?: AbortSignal,
-): Promise<AskResult> {
-  const provider = resolve(process.env);
-
-  if (provider === "typesafe") {
-    typesafeClient ??= new TypeSafeClient(
-      process.env.TYPESAFE_BASE_URL ? { baseURL: process.env.TYPESAFE_BASE_URL } : undefined,
-    );
-    const response = await (
-      typesafeClient.systemOne as unknown as (
-        payload: { state: unknown; questions: Record<string, unknown>; model?: string },
-        options?: { signal?: AbortSignal },
-      ) => Promise<any>
-    )({ state, questions, model }, { signal });
-    return {
-      answers: response.answers,
-      usage: { input_tokens: response.usage?.input_tokens ?? 0, output_tokens: response.usage?.output_tokens ?? 0 },
-      provider,
-      model,
-    };
-  }
-
-  if (provider === "openrouter") {
-    // OpenRouter has no redirecting "latest" slug; map it to the current
-    // release. Pin exact versions with the model env var when that matters.
-    const OPENROUTER_LATEST = "jev-1.13";
-    const effective = model === "jev-latest" ? OPENROUTER_LATEST : model;
-    const slug = effective.startsWith("typesafe/") ? effective : `typesafe/${effective}`;
-    const response = await fetch("https://openrouter.ai/api/alpha/decisions", {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.OPENROUTER_API_KEY}`,
-        "Content-Type": "application/json",
-        "HTTP-Referer": REFERER,
-        "X-Title": X_TITLE,
-        "X-OpenRouter-Title": X_TITLE,
-      },
-      body: JSON.stringify({ model: slug, state, questions }),
-      signal,
-    });
-    if (!response.ok) {
-      const body = await response.text().catch(() => "");
-      throw new Error(`OpenRouter decisions API ${response.status}: ${body.slice(0, 200)}`);
-    }
-    const body = await response.json();
-    return {
-      answers: body.answers ?? {},
-      // The decisions endpoint does not document a usage block; tolerate absence.
-      usage: { input_tokens: body.usage?.input_tokens ?? 0, output_tokens: body.usage?.output_tokens ?? 0 },
-      provider,
-      model: slug,
-    };
-  }
-
-  if (provider === "vercel") {
-  // Vercel AI Gateway exposes Jev through the AI SDK's experimental evaluate
-  // API: "noul" questions become "boolean", answers return as probabilities,
-  // and Choice/Score confidence lives in providerMetadata.typesafe.
-  const vercelQuestions: Record<string, any> = {};
-  for (const [id, question] of Object.entries(questions)) {
-    const q = question as { type: string; instructions?: unknown; criteria?: unknown };
-    vercelQuestions[id] = {
-      type: q.type === "noul" ? "boolean" : q.type,
-      instructions: q.instructions,
-      criteria: q.criteria,
-    };
-  }
-  const result = await experimental_evaluate({
-    model: model.startsWith("typesafe-ai/") ? model : "typesafe-ai/jev",
-    state: state as any,
-    questions: vercelQuestions as any,
-    abortSignal: signal,
-  });
-  const confidence = ((result as any).providerMetadata?.typesafe?.confidence ?? {}) as Record<string, number>;
-  const adapted: Record<string, any> = {};
-  for (const [id, answer] of Object.entries(result.answers as Record<string, any>)) {
-    if (answer?.type === "boolean") {
-      adapted[id] = { type: "noul", noul: answer.probability };
-    } else if (answer?.type === "choice") {
-      adapted[id] = { type: "choice", choice: answer.choice, probabilities: answer.probabilities ?? {}, confidence: confidence[id] ?? null };
-    } else if (answer?.type === "score") {
-      adapted[id] = { type: "score", score: answer.score, probabilities: answer.probabilities ?? {}, confidence: confidence[id] ?? null };
+function object(value: unknown): value is Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value);
+}
+function probability(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 && value <= 1;
+}
+const malformed = () => new Error("Jev returned an invalid decision; no browser action was executed.");
+export function validateAnswers(value: unknown, questions: Record<string, Question>): Record<string, Answer> {
+  if (!object(value)) throw malformed();
+  const result: Record<string, Answer> = {};
+  for (const [name, question] of Object.entries(questions)) {
+    const answer = value[name];
+    if (!object(answer) || answer.type !== question.type) throw malformed();
+    if (question.type === "noul") {
+      if (!probability(answer.noul)) throw malformed();
+      result[name] = { type: "noul", noul: answer.noul };
     } else {
-      adapted[id] = answer;
+      const criteria = question.criteria ?? {};
+      if (typeof answer.choice !== "string" || !Object.hasOwn(criteria, answer.choice)) throw malformed();
+      if (!object(answer.probabilities)) throw malformed();
+      const probabilities: Record<string, number> = {};
+      for (const [choice, p] of Object.entries(answer.probabilities)) {
+        if (!Object.hasOwn(criteria, choice) || !probability(p)) throw malformed();
+        probabilities[choice] = p;
+      }
+      if (!Object.hasOwn(probabilities, answer.choice)) throw malformed();
+      if (answer.confidence != null && !probability(answer.confidence)) throw malformed();
+      result[name] = { type: "choice", choice: answer.choice, probabilities, confidence: (answer.confidence as number | null) ?? null };
     }
   }
-  return {
-    answers: adapted,
-    usage: { input_tokens: result.usage?.inputTokens ?? 0, output_tokens: result.usage?.outputTokens ?? 0 },
-    provider,
-    model: "typesafe-ai/jev",
-  };
+  return result;
 }
-
-  // Cloudflare Workers AI wraps the same contract in {model, input} and the
-  // v4 {result, success} envelope. Single alias; no version pinning.
-  const cfSlug = model.startsWith("typesafe/") ? model : `typesafe/${model === "jev-latest" ? "jev" : model}`;
-  const cfResponse = await fetch(
-    `https://api.cloudflare.com/client/v4/accounts/${process.env.CLOUDFLARE_ACCOUNT_ID}/ai/run`,
-    {
-      method: "POST",
-      headers: {
-        Authorization: `Bearer ${process.env.JEV_CLOUDFLARE_API_TOKEN || process.env.CLOUDFLARE_API_TOKEN}`,
-        "Content-Type": "application/json",
-      },
-      body: JSON.stringify({ model: cfSlug, input: { state, questions } }),
-      signal,
-    },
-  );
-  const cfBody = await cfResponse.json().catch(() => ({}));
-  if (!cfResponse.ok || cfBody.success === false) {
-    throw new Error(`Cloudflare AI run ${cfResponse.status}: ${JSON.stringify(cfBody.errors ?? cfBody).slice(0, 200)}`);
+export async function askJev(
+  state: unknown, questions: Record<string, Question>, config: JevConfig, signal?: AbortSignal,
+): Promise<AskResult> {
+  let response: Response;
+  try {
+    response = await fetch(config.url, {
+      method: "POST", redirect: "error", signal,
+      headers: { Authorization: `Bearer ${config.key}`, "Content-Type": "application/json" },
+      body: JSON.stringify({ model: config.model, state, questions }),
+    });
+  } catch {
+    if (signal?.aborted) throw signal.reason;
+    throw new Error("Jev request failed. Check the endpoint, network and TLS settings; redirects are not followed.");
   }
-  // The v4 envelope double-nests: body.result.result holds the model output.
-  const cfOuter = cfBody.result;
-  if (cfOuter && typeof cfOuter.state === "string" && cfOuter.state !== "Completed") {
-    throw new Error(`Cloudflare AI run state ${cfOuter.state}: ${JSON.stringify(cfBody.errors ?? []).slice(0, 200)}`);
+  if (!response.ok) {
+    await response.body?.cancel();
+    throw new Error(`Jev inference returned HTTP ${response.status}. Check the endpoint, key and model access.`);
   }
-  const cfPayload = cfOuter?.result ?? cfOuter ?? cfBody;
+  let body: unknown;
+  try { body = await response.json(); } catch {
+    if (signal?.aborted) throw signal.reason;
+    throw malformed();
+  }
+  if (!object(body)) throw malformed();
+  const usage = object(body.usage) ? body.usage : {};
+  const tokens = (v: unknown) => typeof v === "number" && Number.isSafeInteger(v) && v >= 0 ? v : null;
   return {
-    answers: cfPayload.answers ?? {},
-    usage: { input_tokens: cfPayload.usage?.input_tokens ?? 0, output_tokens: cfPayload.usage?.output_tokens ?? 0 },
-    provider,
-    model: cfPayload.model ?? cfSlug,
+    answers: validateAnswers(body.answers, questions),
+    usage: { input_tokens: tokens(usage.input_tokens), output_tokens: tokens(usage.output_tokens) },
+    model: config.model,
   };
 }

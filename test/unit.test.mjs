@@ -3,7 +3,6 @@ import { test } from "node:test";
 import {
   buildActionSpace,
   buildCriteria,
-  heuristicQuery,
   isNoiseHref,
   isNoiseName,
   MAX_ELEMENTS,
@@ -159,13 +158,12 @@ test("pickAlternate returns next-best non-excluded option", () => {
   assert.equal(pickAlternate({ a: 0 }, new Set()), null);
 });
 
-test("heuristicQuery strips task boilerplate", () => {
-  assert.equal(heuristicQuery("Search Wikipedia for the article about Ristretto and stop on it"), "ristretto");
-});
+
 
 // ── Password delivery (src/password.ts) ──────────────────────────────────────
 import { mkdtemp, mkdir, writeFile, chmod, symlink, rm, stat, link } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 import {
   parseTrustedOrigin,
@@ -423,7 +421,7 @@ test("buildActionSpace offers fill_password only when a password source is activ
 });
 
 test("readHandoffSecret consumes a valid one-shot file and deletes it", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "jev-handoff-"));
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), "jev-handoff-"));
   await chmod(dir, 0o700);
   const file = join(dir, "pw.1");
   await writeFile(file, "super-secret-value", { mode: 0o600 });
@@ -434,7 +432,7 @@ test("readHandoffSecret consumes a valid one-shot file and deletes it", async ()
 });
 
 test("readHandoffSecret rejects the attack shapes", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "jev-handoff-"));
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), "jev-handoff-"));
   await chmod(dir, 0o700);
   const good = join(dir, "good");
   await writeFile(good, "super-secret-value", { mode: 0o600 });
@@ -455,7 +453,7 @@ test("readHandoffSecret rejects the attack shapes", async () => {
   // A handoff directory that is itself a symlink to a valid-looking directory.
   // The anchor is the symlink, so the basename-only containment rule passes
   // and only the realpath check in ensureHandoffDir can catch it.
-  const realDir = await mkdtemp(join(tmpdir(), "jev-real-"));
+  const realDir = await mkdtemp(join(realpathSync(tmpdir()), "jev-real-"));
   await chmod(realDir, 0o700);
   const realFile = join(realDir, "pw");
   await writeFile(realFile, "super-secret-value", { mode: 0o600 });

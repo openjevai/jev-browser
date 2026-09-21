@@ -1,350 +1,198 @@
-# Jev Browser
+# Jev Browser：宿主生成文字，Jev 控制浏览器
 
-[![CI](https://github.com/jkudish/jev-browser/actions/workflows/ci.yml/badge.svg)](https://github.com/jkudish/jev-browser/actions/workflows/ci.yml)
-[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+这是基于 `jkudish/jev-browser` 0.4.1 改造的 **0.5.2 本地版本**，没有发布到 npm。请从这个目录运行；执行上游的 `npx @jkudish/jev-browser` 不会得到这些改造。
 
-Fast and very cheap browser use using TypeSafe's Jev model.
+Codex、Qoder、Claude Code 等宿主 Agent 理解任务、生成搜索词和表单内容、阅读结果并总结。Jev 只选择浏览器动作，Playwright 执行动作。全项目没有额外文字模型调用、关键词猜测、MCP sampling 或宿主登录凭据读取。
 
-Give jev-browser a task and a URL.
-
-It drives a real headless browser through an MCP server, CLI, or library. TypeSafe's Jev model picks one action per step from the page's clickable, typeable, and selectable elements, and scores how likely it is that the goal is met or the run is stuck. Code owns the loop: budgets, recovery, stop gates. You get the final page, a step trace with confidences, console errors, and a screenshot.
-
-Things it has done on real sites, not demos:
-
-- Navigated Wikipedia from the Coffee article to Espresso in about 4 seconds, for $0.0016.
-- Filled a contact form and stopped without submitting it.
-- Pulled the price off a live pricing page.
-- Returned a full guide page as markdown.
-- Produced an accessibility-tree breakdown of a WordPress site.
-
-This is early software. Expect rough edges on harder sites. Issues and pull requests are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
-
-## Demo
-
-Searches GitHub for this repository, opens Releases, and answers a question about the page. Every Jev judgment is on the right: the action chosen, its confidence, and the goal and stuck probabilities for each step.
-
-![jev-browser searching GitHub and opening its own Releases page, judgment trace on the right](assets/github-demo.gif)
-
-Full-resolution video: [assets/github-demo.mp4](assets/github-demo.mp4).
-
-## Install
-
-Requires Node.js 20 or newer, a TypeSafe API key from [console.typesafe.ai/settings/keys](https://console.typesafe.ai/settings/keys), and optionally a key for a typing provider (see [the typing model](#the-typing-model)). Playwright's Chromium downloads automatically on install; set `JEV_BROWSER_SKIP_BROWSER_DOWNLOAD=1` to opt out.
-
-### Let an agent install it for you
-
-Paste this into your coding agent:
+安装并注册 MCP 后，必填的模型配置只有：
 
 ```text
-Install the Jev Browser MCP server for me. The package is @jkudish/jev-browser on npm and the server
-command is `npx -y @jkudish/jev-browser`; register it as an MCP server with your client. Check whether
-TYPESAFE_API_KEY is already set in the server environment; if not, walk me through setting it up without
-pasting the key into the chat (I can create one at console.typesafe.ai/settings/keys). When it's
-registered, ask if I'd like to run a first navigation task, and when we do, show me the step trace and cost.
-Full instructions: https://github.com/jkudish/jev-browser#readme
+JEV_API_URL = 完整的 Jev 推理端点
+JEV_API_KEY = 该端点的 Key
 ```
 
-From npm:
+## 交给其他电脑的 Agent 安装
+
+这是代码包，不包含安装脚本。请让目标电脑上的 Agent 阅读 [INSTALL_FOR_AGENT.md](INSTALL_FOR_AGENT.md)，自行检查 Node/Chrome、使用 npm 安装锁定依赖、编译并合并 MCP 配置。不要使用上游 npm 包替代本改造版。
+
+## 安装与启动
+
+需要 Node.js 20+。在此项目目录运行：
 
 ```bash
-npx -y @jkudish/jev-browser --help
+npm ci --ignore-scripts
+npm run build
 ```
 
-<details>
-<summary>Amp</summary>
+默认使用电脑已经安装的 **Google Chrome**，安装项目不会下载或重装浏览器。Playwright 以 `chrome` 通道启动独立临时配置的 Chrome 实例，不接管你日常使用的窗口，也不读取其登录数据。
+
+当前电脑已检测到系统安装的 Google Chrome。默认后台运行；设置 `JEV_BROWSER_HEADED=1` 可显示窗口，无需另装 Chromium。可见窗口中的页面显示区域会随窗口大小自动变化；后台模式仍保留固定显示尺寸，便于自动化。Chrome 安装在非标准位置时，可以用 `JEV_BROWSER_EXECUTABLE_PATH` 指定现有可执行文件。
+```bash
+npm start
+```
+
+这是 **stdio MCP 进程**，启动后等待 Agent 连接，不是聊天界面或 HTTP 服务。日志写 stderr，stdout 仅供 MCP 协议使用。
+
+## 三个客户端的接入
+
+先生成适合当前电脑的配置。命令只输出模板，不读取真实 Key、不改客户端设置：
 
 ```bash
-amp mcp add jev-browser -- npx -y @jkudish/jev-browser
+node scripts/client-config.mjs codex
+node scripts/client-config.mjs qoder
+node scripts/client-config.mjs claude
 ```
 
-</details>
+配置不绑定 Node 的安装路径。macOS/Linux 使用 `sh` 启动检查脚本，Windows 使用 `cmd.exe`；脚本从 **Agent 进程的 PATH** 查找 `node`。找不到时会在启动错误日志中提示安装 Node.js 20+ 并重启 Agent；不会自动安装软件。Node 版本过低也会给出升级提示。
 
-<details>
-<summary>Claude Code</summary>
+项目启动脚本仍使用绝对路径。将 `JEV_API_URL` 调整为你的完整端点，将 `YOUR_JEV_API_KEY` 替换为真实 Key。移动项目或换机器后重新生成配置；更换 Node 安装位置无需修改配置，只要 PATH 中能找到它。
 
-```bash
-claude mcp add jev-browser -- npx -y @jkudish/jev-browser
-```
+如果尚未安装 Node，先通过 [Node.js 官方下载页](https://nodejs.org/en/download) 安装，再运行上面的配置生成命令。若终端能执行 `node --version` 而桌面 Agent 找不到，说明两者的 PATH 不同；重启应用，或从该终端启动 Agent。使用 nvm 等版本管理器时尤其需要确保 Agent 继承相应 PATH。
 
-</details>
+将配置生成命令的输出合并到对应客户端，真实 Key 仅保存在目标电脑的本地配置中：
 
-<details>
-<summary>Codex (<code>~/.codex/config.toml</code>)</summary>
+- Codex：`~/.codex/config.toml`，如果设置了 `CODEX_HOME` 则使用该目录。
+- Qoder：客户端 MCP 设置，添加 `mcpServers` 下的条目。
+- Claude Code：项目 `.mcp.json` 中的 `mcpServers`，也可以使用客户端 MCP 添加功能。
 
-```toml
-[mcp_servers.jev-browser]
-command = "npx"
-args = ["-y", "@jkudish/jev-browser"]
-```
+生成器默认开启可见窗口；后台运行时追加 `--headless`。生成器不会修改客户端设置，也不会读取真实 Key。其他支持本地 stdio MCP 的 Agent 可使用同样的 command、args 和 env。
 
-</details>
+官方接入参考：[Codex](https://learn.chatgpt.com/docs/extend/mcp)、[Qoder](https://docs.qoder.com/user-guide/chat/model-context-protocol)、[Claude Code](https://code.claude.com/docs/en/mcp)。
 
-<details>
-<summary>OpenCode (<code>opencode.json</code>)</summary>
+接入后可以说：
+
+> 使用 jev-browser 在 Wikipedia 搜索 Ristretto。需要输入时由你生成搜索词并继续。阅读文章后用中文总结，并关闭浏览器会话。
+
+## 推理地址与模型
+
+| 服务 | `JEV_API_URL` | 默认模型 |
+|---|---|---|
+| OpenRouter | `https://openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` |
+| TypeSafe | `https://api.typesafe.ai/v1/systemone` | `jev-latest` |
+| 兼容代理 | 服务提供的完整 Decisions/System One 端点 | `jev-latest` |
+
+发送 `Authorization: Bearer <Key>`，请求体为 `{model, state, questions}`；不追加路径、不跟随 HTTP 重定向。代理必须支持同样的结构化 Decisions 请求和响应，不支持普通 `/chat/completions` 端点。
+
+可选 `JEV_MODEL` 覆盖模型名。代理若不接受 `jev-latest`，需要明确提供其支持的模型名。OpenRouter 识别仅按官方主机名进行，私有代理不会被猜测成某家供应商。
+
+非 2xx、格式错误、无效动作或非法概率都会拒绝执行相应浏览器动作。服务端错误正文不会回传，以免泄露密钥或页面内容。只读模型用量：没有返回的 token 数为 `null`，`est_cost_usd` 为 `null`，不能解释为免费；实际费用以提供商账单为准。
+
+## 工具与宿主配合
+
+| 工具 | 必要参数 | 功能 |
+|---|---|---|
+| `jev_navigate` | `task`, `start_url` | 默认复用已有浏览器，首次才创建 |
+| `jev_resume` | `session_id`, `request_id`, `text` | 提供普通文字，执行 Jev 已选中的输入动作后继续 |
+| `jev_continue` | `session_id` | 继续暂停任务；附带 `task` 时在当前页面开始新子任务 |
+| `jev_read` | `session_id` | 读取当前页和可选截图，不调用模型 |
+| `jev_close` | `session_id` | 释放浏览器 |
+
+`jev_navigate` 默认复用已有浏览器。批量任务请顺序处理，不要每项都新建实例；仅当用户明确要求额外独立实例时，才传 `new_instance: true`。上一项处于 `needs_input` 或 `paused` 时，新任务返回 `session_in_use`，先完成或关闭旧任务。
+
+`jev_navigate` 支持 `max_steps`、`max_seconds`、`allow_typing`、`format`、`max_chars`、`screenshot`。`jev_continue` 的预算参数仅能和新的 `task` 一起指定。`jev_read` 支持后三个输出选项。
+
+典型输入请求：
 
 ```json
 {
-  "mcp": {
-    "jev-browser": {
-      "type": "local",
-      "command": ["npx", "-y", "@jkudish/jev-browser"],
-      "environment": { "TYPESAFE_API_KEY": "ts_..." }
-    }
+  "status": "needs_input",
+  "session_id": "会话 UUID",
+  "request_id": "一次性请求 UUID",
+  "pending_action": {
+    "kind": "search",
+    "field_description": "input Search query",
+    "submits_after_fill": true
   }
 }
 ```
 
-</details>
+宿主根据用户任务和字段上下文自行生成文字，调用 `jev_resume`。只有缺少必要的用户信息时才询问用户。文字不做 trim 或去引号处理；浏览器本身仍按字段类型处理不允许的字符。普通输入不提交，搜索输入会按 Enter，其他提交仍是 Jev 的独立决策。
 
-<details>
-<summary>Any other MCP client</summary>
+返回 `paused` 时调用 `jev_continue`；返回 `done`、`goal_achieved`、`stuck`、`max_steps` 或 `timeout` 时，宿主阅读结果并决定是否通过新的 `task` 继续。目标判断不是成功的绝对保证，宿主应依据页面内容核实。
 
-```json
-{
-  "mcpServers": {
-    "jev-browser": {
-      "command": "npx",
-      "args": ["-y", "@jkudish/jev-browser"],
-      "env": { "TYPESAFE_API_KEY": "ts_..." }
-    }
-  }
-}
-```
+所有回复是标准 MCP 文本 JSON，可附带 JPEG 图片，不需要客户端支持 sampling 或专用插件。
 
-</details>
+## 会话与失败行为
 
-Some MCP clients filter the environment before spawning servers, which silently drops `TYPESAFE_API_KEY`. If the server reports a missing key, pass it explicitly as shown above.
+- 同一会话保留 cookies、页面、标签页和历史；子任务改变时累计会话用量仍保留。
+- 默认每个子任务最多 24 步、180 秒活动执行时间。等待宿主文字不扣执行预算。
+- 每次调用最多推进 30 秒。正常到达时间片边界返回 `paused`；推理超时可继续。如果浏览器操作在未知进度中被硬中断，则关闭会话并返回错误，避免重放可能已发生的提交。
+- 同一个 MCP 服务进程默认只保留一个浏览器，会复用其 context 和工作标签页；并发默认调用排队执行，保留 cookies。每个新批量条目会导航到其起始网址，并关闭本服务该会话的其他标签页。只有显式要求额外实例才新建，最多 4 个；空闲 10 分钟自动关闭。`jev_close`、客户端断开、SIGINT/SIGTERM 会关闭浏览器。进程重启后旧 ID 失效。
+- 切换密码来源、origin 或录像目录时需要先关闭原会话，不能自动额外启动浏览器。不同客户端分别启动的 MCP 进程不共享此实例；Chrome 自身的多个渲染进程也不代表多个浏览器实例。
+- 同一会话串行执行。有效输入请求至多消费一次，重复 ID 返回缓存结果，包括首次操作之后出现的错误。已关闭或过期的会话只返回失效信息。
+- 恢复前检查页面及节点身份。页面跳转、节点替换或字段语义改变会丢弃旧文字并重新决策。普通文字不会改填到新的或密码字段。
+- 页面内容、标签和截图是不可信数据，不能覆盖用户任务或工具规则。
+- 页面内容和任务仍会发送到你配置的 Jev 推理服务；“宿主生成文字”不代表文字永不出现在后续 Jev 状态中。
 
-## Without MCP: CLI and library
+## 密码与可选设置
 
-The same agent runs from the command line. Result JSON is printed to stdout.
+保留上游密码机制，密码不经过普通 `text` 参数：
+
+1. 在 MCP 环境中设置 `JEV_BROWSER_PASSWORD_ORIGIN` 为允许填写的精确 origin。
+2. 提供 `password_file`（默认 `~/.jev-browser/handoff` 下的一次性 0600 文件）或 `password_env`（明确选择的 `JEV_PASSWORD_*` 环境变量名）。两者不能同时使用。
+3. 原有来源、权限、符号链接、长度、origin 校验及脱敏保持有效。尝试密码填写后，该会话所有后续截图都被抑制；凭据会话不允许录像。
+
+`JEV_BROWSER_HANDOFF_DIR` 可改变交接目录。交接目录需要 0700 权限且路径没有符号链接。密码不放入任务、日志、聊天或工具的普通文字参数。
+
+其他可选变量：`JEV_BROWSER_HEADED=1` 显示独立 Chrome 窗口；`JEV_BROWSER_CHANNEL` 默认 `chrome`，只有显式选择 `chromium` 才使用已有的 Playwright Chromium 缓存；`JEV_BROWSER_EXECUTABLE_PATH` 指向非标准位置安装的浏览器。程序不会自动下载浏览器。
+
+## CLI 和库
+
+一次性 CLI 仍可执行不需文字的任务：
 
 ```bash
-npx -y @jkudish/jev-browser run "Find the newest release and stop on it" https://github.com/jkudish/jev-browser/releases
+node scripts/start.mjs run "Open the newest release" https://github.com/jkudish/jev-browser/releases --no-typing
 ```
 
-CLI options include `--format`, `--max-chars`, `--max-steps`, `--max-seconds`, `--no-typing`, `--screenshot path.jpg`, and `--record path.webm` (or a directory for Playwright's raw output). Run with `--help` for the full list.
+需要文字时，CLI 返回 `needs_input`，退出码为 3，浏览器已关闭。这个结果不能续传，请改用 MCP。配置、执行错误退出码非零。
 
-Or import it as a library. The package entry exports `navigate` side-effect free: importing it starts no server and no browser until you call it.
+库支持宿主文字回调，也可直接使用 `SessionManager`：
 
 ```js
-import { navigate } from "@jkudish/jev-browser";
+import { navigate } from './dist/library.js';
 
 const result = await navigate({
-  task: "Find the price of the Pro plan",
-  startUrl: "https://example.com/pricing",
-  format: "markdown",
-  maxSteps: 16,
+  task: 'Search Wikipedia for Ristretto',
+  startUrl: 'https://en.wikipedia.org/wiki/Main_Page',
+  textProvider: async (request, signal) => {
+    // 示例宿主事先确定的搜索词；实际由你的宿主 Agent 提供。
+    return 'Ristretto';
+  },
 });
-
-if ("error" in result) throw new Error(result.error);
-console.log(result.status, result.final_url);
-console.log(result.page.content);
 ```
 
-## Password fill (logins)
+库调用同样默认使用已安装的 Chrome。导入库本身不会启动服务器、浏览器或模型请求。
 
-The agent can fill native password fields without the password ever reaching a model. The value arrives through one of three channels, lives in memory for a single run, and is scrubbed from every state, trace, error, URL, and payload the run produces. Video recording is refused on credential runs and the final screenshot is suppressed once a fill is attempted. A fill never submits: no Enter, no click.
+## 从上游迁移
 
-Set the trust anchor once, in the MCP server's environment:
+这是行为不兼容的本地改造版：
+
+- `TYPESAFE_API_KEY` / `OPENROUTER_API_KEY` → `JEV_API_KEY`，同时填写完整 `JEV_API_URL`。
+- `JEV_BROWSER_MODEL` → 可选 `JEV_MODEL`。
+- `JEV_PROVIDER`、`JEV_BROWSER_TYPE_*`、自动供应商选择及文字模型回退已删除。
+- Vercel / Cloudflare 专用包装接口不再自动适配；可使用符合本版 Decisions 格式的代理。
+- `jev_navigate` 会保留会话并可能返回输入请求；调用方需要处理状态并在结束时关闭。
+- 已删除固定单价估算；缺失用量不再当零。
+
+不要通过设置 `JEV_BROWSER_TYPE_PROVIDER=codex` 尝试接入，它不再是有效配置。宿主通过普通 MCP 工具返回和下一次调用提供文字。
+
+## 验证
 
 ```bash
-JEV_BROWSER_PASSWORD_ORIGIN=https://acme.com
-```
-
-That must be an exact origin (scheme, host, port; no wildcards; http is allowed only on localhost). Fills happen only on that origin. Anywhere else the fill is refused and the refusal shows in the step trace as `origin_mismatch`.
-
-Then pipe the secret in per run. Any producer that can print bytes works: 1Password, Bitwarden, `pass`, LastPass, the macOS Keychain, `secret-tool`, Vault, a plain file, or an environment variable you already have.
-
-**MCP, via a one-shot handoff file.** The server only accepts files placed directly inside its handoff directory (default `~/.jev-browser/handoff`, mode 0700), validates them (owner, mode 0600, single link, no symlinks, sane size), and deletes them at run start:
-
-```bash
-mkdir -p ~/.jev-browser/handoff && chmod 700 ~/.jev-browser/handoff
-pwfile="$HOME/.jev-browser/handoff/pw.$$"
-op read --no-newline --out-file "$pwfile" 'op://Work/acme/password'
-chmod 600 "$pwfile"
-```
-
-```jsonc
-// arguments
-{
-  "task": "Log in and open the billing page",
-  "start_url": "https://acme.com/login",
-  "password_file": "/home/you/.jev-browser/handoff/pw.12345"
-}
-```
-
-**MCP, via an environment variable.** Naming a variable `JEV_PASSWORD_*` is the opt-in. Any other name is rejected before its value is ever looked up, so the model cannot probe the server's environment:
-
-```bash
-# once, in the MCP server's environment:
-JEV_PASSWORD_ACME="$(op read --no-newline 'op://Work/acme/password')"
-```
-
-```jsonc
-// arguments
-{
-  "task": "Log in and open the billing page",
-  "start_url": "https://acme.com/login",
-  "password_env": "JEV_PASSWORD_ACME"
-}
-```
-
-**CLI, straight from a pipe.** `-` reads the secret from stdin, so it never appears in argv, the environment, or process listings:
-
-```bash
-op read --no-newline 'op://Work/acme/password' |
-  npx -y @jkudish/jev-browser run "Log in and open the billing page" \
-    https://acme.com/login --password-file - --password-origin https://acme.com
-```
-
-Rules and limits of the mechanism, stated plainly:
-
-- `password_file` takes a local pathname only. Never put the password value in the task, in tool arguments, in argv, or in the filename.
-- Library callers pass `password: { value, origin }` in the `navigate()` options instead; the same validation, origin binding, and redaction apply.
-- Handoff files are one-shot: read and unlinked at run start. Recreate the file for every run.
-- The mechanism needs the agent's shell and the MCP server to share a filesystem. It does not protect against a host agent that reads the file itself or runs your secret manager without redirection; treat the `op read` command as operator-approved.
-- The trusted origin can read and transmit the password, and its pages can submit from an input event with no Enter key. Origin binding does not make a compromised site safe.
-- Redaction is defense in depth: raw, percent-encoded, form-encoded, HTML-encoded, markdown-escaped, whitespace-normalized, and YAML-escaped (aria snapshots) echoes of the value are scrubbed from everything the run returns, including values a page reflects into its own labels, attributes, console output, or URLs after the fill. On credential runs every capture window (labels, options, hrefs, excerpts, error strings) is sized to the longest known representation of the value, so an echo is always captured whole and redacted before any length cap can cut it; dropdowns are selected by DOM index, never by a label string; the task itself is scrubbed before any model sees it, so "the model never sees the value" holds even if a caller ignores this advice and puts it in the task. Secrets containing a line break or any control character, or whose echo-normalized form (whitespace collapsed, zero-width characters stripped) collapses below the safe redaction length, are rejected up front (produce it with `op read --no-newline` or equivalent). Redaction cannot cover arbitrary transformations, process-memory inspection, or OS-level monitoring. For the same reason, credential runs refuse any Playwright debug output (`PWDEBUG`, any nonempty `DEBUG`, `DEBUG_FILE`) and video recording.
-- On runs without a password source, password inputs are skipped during extraction entirely: the feature costs nothing when unused.
-- Every password field the model fills in a run receives the same configured value; this is for logging in, not for setting new passwords. `allow_typing: false` disables the feature entirely.
-
-## The tool
-
-Every run makes paid TypeSafe API calls, typically a fraction of a cent, plus one small LLM call per typed field when a typing provider is configured. The example below is a real run.
-
-```jsonc
-// arguments
-{
-  "task": "Search Wikipedia for the espresso-based drink called Ristretto and stop when you are on that article",
-  "start_url": "https://en.wikipedia.org/wiki/Main_Page"
-}
-```
-
-```jsonc
-// live result, abridged
-{
-  "status": "done",
-  "final_url": "https://en.wikipedia.org/wiki/Ristretto",
-  "elapsed_ms": 3601,
-  "steps": [
-    { "step": 1, "proposed_action": "click_e2", "executed_action": "click_e2", "detail": "a \"Search Wikipedia [f]\" -> /wiki/Special:Search", "confidence": 1.0 },
-    { "step": 2, "proposed_action": "search_e1", "executed_action": "search_e1", "detail": "searched \"Ristretto\" via openrouter", "confidence": 0.99 },
-    { "step": 3, "proposed_action": "done", "executed_action": null, "detail": "done proposed; not executed", "confidence": 0.99 }
-  ],
-  "usage": { "jev_calls": 3, "input_tokens": 51748, "est_cost_usd": 0.0022 }
-}
-```
-
-Parameters: `max_steps` (default 24), `max_seconds` (default 180), `allow_typing` (default true), `format` (`text`, `markdown`, `html`, `aria`), `max_chars` (override the cap), `screenshot` (`final`, default, or `none`).
-
-## What you get back
-
-**The final page, in the format you ask for.** Every payload reports `truncated` and `true_length`, and `max_chars` overrides any default.
-
-| Format | Default cap | Best for |
-| --- | --- | --- |
-| `text` | 8,000 chars | Feeding the page to Jev or an LLM next; quick reads |
-| `markdown` | 16,000 chars | Readable artifacts and notes; carries navigation chrome |
-| `html` | 1 MB | Parsing the page yourself with your own selectors |
-| `aria` | 16,000 chars | The accessibility tree as YAML; what screen readers and agents see |
-
-**A final screenshot.** A viewport JPEG that renders inline in MCP clients, or lands as a file with the CLI's `--screenshot path.jpg`. Pass `screenshot: "none"` to skip it.
-
-**A debug trace you can audit.** One record per step: the proposed action versus the action actually executed, why a recovery fired, action errors, the Choice confidence, the top option's probability, and the goal and stuck probabilities for that step. Stop statuses say which gate fired. Alongside the trace: console errors, page errors, and failed network requests captured per step and tagged with the page they came from, up to 200 events, plus Jev call counts, token usage, and estimated cost. If the final payload or screenshot could not be extracted, the run still returns and lists the problem under `extraction_problems`.
-
-## How it decides
-
-Each step makes one primary Jev call with three questions over the same state: an action Choice over the page's interactive elements plus scroll/back/done, a goal Noul, and a stuck Noul ([fan-out pattern](https://docs.typesafe.ai/patterns/fan-out.md)). The state includes a short excerpt of the page's visible text, so the goal judgment can see content, not just URLs and links. A select action adds one second-stage Choice for its option. Elements come from the DOM directly, not the accessibility tree, because accessibility trees under-report inputs; the agent found DuckDuckGo's search box only after this switch. Actions: click, search, type, select a native dropdown, submit, scroll, back, done.
-
-Three of those actions move text or forms, and the boundaries are deliberate. Search boxes, identified structurally as `input[type=search]` or `role=searchbox` and nothing else, get a single `search_eN` action that types the query and runs the search in one step. Submit controls (`button[type=submit]`, `input[type=submit]`, and a `button` with no type attribute inside a form) are offered as `submit_eN` instead of `click_eN`. Every other single-line text field offers two actions: `type_eN`, which types without submitting, and `submit_eN`, which presses Enter on that field to submit. So filling one field of a multi-field form never submits it under the agent's feet, and a field that only looks like a search box (a plain text input in a div with a JavaScript Enter handler) never gets the one-action search.
-
-Stop conditions, in code, checked before executing the step's proposed action: the agent chooses `done`, goal probability > 0.85, stuck probability > 0.85, the step budget, or the time budget. A repeated action with no effect switches to the next-best option from the Choice distribution. There is deliberately no low-confidence override: split probability across several similar elements is usually several acceptable alternatives, not uncertainty.
-
-Statuses: `done` (agent chose to stop), `goal_achieved` (the goal watcher fired), `stuck`, `max_steps`, `timeout`, `error`. `done` and `goal_achieved` are two independent judgments; agreement between them is what a trustworthy finish looks like, and the trace shows both at every step.
-
-## The typing model
-
-Jev never generates text. It returns typed decisions only: which option, with what probabilities. So when a task needs a string, typing a search query or filling a field, that string comes from a small model you choose. This is the only place a second model is involved, and it runs at most once or twice per task, about 48 tokens per call.
-
-Configuration is automatic when possible. The server picks the first provider whose key it recognizes, in this order:
-
-| Provider | Recognized by | Default model |
-| --- | --- | --- |
-| OpenAI | `OPENAI_API_KEY` starting with `sk-` | `gpt-5.6-luna` |
-| OpenRouter | `OPENROUTER_API_KEY` starting with `sk-or-` | `openai/gpt-5.6-luna` |
-| Anthropic | `ANTHROPIC_API_KEY` starting with `sk-ant-` | `claude-haiku-4.5` |
-| Google | `GEMINI_API_KEY` or `GOOGLE_GENERATIVE_AI_API_KEY` starting with `AIza` | `gemini-2.5-flash` |
-
-Overrides:
-
-- `JEV_BROWSER_TYPE_MODEL` picks any model the resolved provider offers, for example `openrouter:anthropic/claude-haiku-4.5` style ids.
-- `JEV_BROWSER_TYPE_PROVIDER` forces one of `openai`, `openrouter`, `anthropic`, `google`, skipping auto-detection.
-- `JEV_BROWSER_TYPE_BASE_URL` (plus `JEV_BROWSER_TYPE_API_KEY` if it needs one) points at any OpenAI-compatible endpoint: Ollama, LM Studio, vLLM, a gateway. This wins over provider detection.
-
-Local example, no cloud key at all:
-
-```bash
-JEV_BROWSER_TYPE_BASE_URL=http://localhost:11434/v1 JEV_BROWSER_TYPE_MODEL=qwen2.5:7b \
-  npx -y @jkudish/jev-browser run "Search Wikipedia for Ristretto and stop on the article" https://en.wikipedia.org/wiki/Main_Page
-```
-
-With no provider at all, typing falls back to a keyword heuristic built from the task text. It is labeled honestly in the trace (`via keyword-heuristic`), and it is meaningfully worse: in testing its queries buried a target article eight results pages deep. Give it a real model if your tasks type anything.
-
-## Limits
-
-- Up to 240 elements per step; Jev's Choice supports 255 options. Beyond that the list is truncated and the state says so, which can hide the needed element on very dense pages.
-- The markdown format converts the whole body, so it carries navigation chrome and can include inline script text; a readability pass is a candidate improvement, not a committed one.
-- Password fields are only ever filled by code, never typed by the model, and only when a password source is configured (see [Password fill](#password-fill-logins)); file inputs are never offered. Hover-revealed menus, keyboard actions other than Enter within the explicit search and submit actions (Escape, Tab, arrow keys), shadow DOM, and iframes are out of scope for v0.1.
-- Thresholds (0.85 goal, 0.85 stuck, budgets) are starting points measured on Wikipedia and DuckDuckGo tasks. Tune them for your sites.
-- Jev is calibrated, not infallible. Treat the trace as evidence, not proof.
-
-## Configuration
-
-| Env var | Default | Purpose |
-| --- | --- | --- |
-| `TYPESAFE_API_KEY` | none | TypeSafe direct. Default provider when set. |
-| `OPENROUTER_API_KEY` | none | Powers both the Jev judgments (when `TYPESAFE_API_KEY` is absent) and, optionally, the typing model. One key runs everything. |
-| `CLOUDFLARE_API_TOKEN` + `CLOUDFLARE_ACCOUNT_ID` | none | Cloudflare Workers AI for the Jev judgments; used when no other provider key is present. |
-| `JEV_PROVIDER` | `auto` | Force `typesafe`, `openrouter`, `cloudflare`, or `vercel` for the Jev calls instead of auto-detection. |
-| `JEV_BROWSER_MODEL` | `jev-latest` | Pin a Jev version, or `typesafe/jev-1.13` on OpenRouter. |
-| `JEV_BROWSER_TYPE_*` | see above | Typing provider, model, and endpoint. |
-| `JEV_BROWSER_HEADED` | unset | Set to `1` to watch the browser. |
-| `JEV_BROWSER_SKIP_BROWSER_DOWNLOAD` | unset | Set to `1` to skip the Chromium postinstall. |
-| `JEV_BROWSER_PASSWORD_ORIGIN` | unset | Required for password fill: the exact origin password fields may be filled on. |
-| `JEV_BROWSER_HANDOFF_DIR` | `~/.jev-browser/handoff` | Directory password handoff files must live in (0700). |
-
-### Vercel
-
-With `AI_GATEWAY_API_KEY` set, judgments run through the Vercel AI Gateway at `typesafe-ai/jev`, using the AI SDK's evaluate API. Answers are adapted back to this package's shapes, including TypeSafe's confidence statistic. Gateway calls appear in Vercel logs and budgets.
-
-### Cloudflare
-
-With `CLOUDFLARE_API_TOKEN` and `CLOUDFLARE_ACCOUNT_ID` set (and no other provider key), judgments run through Cloudflare Workers AI at `typesafe/jev`, the single always-current alias. Usage tokens come back on every call. Cloudflare serves one alias rather than pinned versions, and pricing is listed in the Cloudflare dashboard. Direct TypeSafe remains the recommended default when you have several keys.
-
-### OpenRouter
-
-With only an `OPENROUTER_API_KEY`, both the Jev judgments and (with no other typing provider) the typing model run through OpenRouter: one key powers the whole package. The Jev endpoint there is alpha and adds a hop, and it serves pinned versions rather than a `latest` alias, so `jev-latest` maps to `typesafe/jev-1.13`. Direct TypeSafe remains the recommended default when you have both keys.
-
-## Also in the family
-
-Need the judgments without the browser? [Jev MCP](https://github.com/jkudish/jev-mcp) exposes the same model as eight judgment tools your agent can call anywhere: verify claims against evidence, screen content before it enters context, find and rerank by meaning, batch-classify, decide, compare passages, and extract fields. The npm package is [@jkudish/jev-mcp](https://www.npmjs.com/package/@jkudish/jev-mcp).
-
-## Sponsoring
-
-If you find Jev Browser useful, consider becoming a [sponsor](https://github.com/sponsors/jkudish) or [donating](https://stripe.com/@jkudish).
-
-## Development
-
-```bash
-npm install
+npm run typecheck
 npm run build
-npm test            # unit tests, offline
-npm run test:e2e    # live navigation tests; requires TYPESAFE_API_KEY
+npm test
+npm run test:e2e
 ```
 
-See [CONTRIBUTING.md](CONTRIBUTING.md). To report a vulnerability, see [SECURITY.md](SECURITY.md).
+默认测试使用本地 HTTP 页面、真实浏览器 和模拟 Jev Decisions 服务，不调用付费模型。覆盖协议、输入恢复、重复请求、目标变化、预算、取消、密码、截图、关闭和 CLI。
 
-## License
+`npm run test:live` 保留上游真实网站回归场景并适配宿主文字续传。只有显式设置 `JEV_API_URL` 和 `JEV_API_KEY` 才运行需要付费服务的用例。默认的模拟协议测试不能证明某个账户拥有 OpenRouter Decisions alpha 的访问权限。
 
-[MIT](LICENSE)
+详见 [验证记录](VALIDATION.md)。
+
+## 已知范围
+
+首版仅本地 stdio MCP，不是远程多用户服务。仍继承上游对 iframe、shadow DOM、悬停菜单、上传控件等复杂页面的限制。接口兼容性与三个具体 Agent 产品的真实使用验证分开记录，不将模拟宿主测试表述为三款产品全部实测。
+
+上游项目：[jkudish/jev-browser](https://github.com/jkudish/jev-browser)，MIT 授权保留在 [LICENSE](LICENSE)。

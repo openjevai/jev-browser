@@ -6,3 +6,8 @@ dist/
 test-results/
 .playwright/
 jev-browser-record-*/
+
+generated/
+
+# Machine-specific generated client templates
+examples/*.local.*

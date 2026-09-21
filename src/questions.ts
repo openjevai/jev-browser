@@ -1,7 +1,9 @@
 // The Jev question catalog — every question in one place, with the pattern it
 // follows. Changing a question here changes every consumer; link the relevant
 // TypeSafe doc when you change a design.
-import { choice, noul } from "@typesafe-ai/sdk";
+import type { Question } from "./provider.js";
+const choice = (instructions: string, criteria: Record<string, string>): Question => ({ type: "choice", instructions, criteria });
+const noul = (instructions: string, criteria: Record<string, string>): Question => ({ type: "noul", instructions, criteria });
 
 /**
  * The primary Jev call for each step: three independent judgments over the

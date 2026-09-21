@@ -1,16 +1,16 @@
 {
   "name": "@jkudish/jev-browser",
-  "version": "0.4.1",
-  "description": "A Jev-driven browser agent: give it a task and a start URL; typed Choice actions, stop/stuck safety gates, the final page, an auditable step trace, and a screenshot. MCP server, CLI, or library.",
+  "version": "0.5.2",
+  "description": "Host-agent text, Jev browser decisions: a resumable local MCP server.",
   "type": "module",
   "license": "MIT",
   "author": "Joey Kudish",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/jkudish/jev-browser.git"
+    "url": "git+https://github.com/wendaoheri/jev-browser.git"
   },
   "bin": {
-    "jev-browser": "dist/index.js"
+    "jev-browser": "scripts/start.mjs"
   },
   "main": "./dist/library.js",
   "types": "./dist/library.d.ts",
@@ -39,9 +39,10 @@
     "build": "tsc",
     "prepare": "npm run build",
     "typecheck": "tsc --noEmit",
-    "test": "node --test test/unit.test.mjs",
-    "test:e2e": "node --test test/e2e.test.mjs",
-    "postinstall": "node scripts/ensure-chromium.mjs"
+    "test": "node scripts/test.mjs",
+    "test:e2e": "node scripts/test.mjs test/session.test.mjs test/mcp.test.mjs",
+    "test:live": "node scripts/test.mjs test/e2e.test.mjs",
+    "start": "node scripts/start.mjs"
   },
   "keywords": [
     "mcp",
@@ -54,13 +55,7 @@
     "automation"
   ],
   "dependencies": {
-    "@ai-sdk/anthropic": "^2.0.0",
-    "@ai-sdk/google": "^1.2.0",
-    "@ai-sdk/openai": "^2.0.0",
-    "@ai-sdk/openai-compatible": "^1.0.0",
     "@modelcontextprotocol/sdk": "^1.17.0",
-    "@typesafe-ai/sdk": "^0.6.0",
-    "ai": "^7.0.105",
     "playwright": "^1.55.0",
     "turndown": "^7.2.0",
     "turndown-plugin-gfm": "^1.0.2",
@@ -71,7 +66,5 @@
     "@types/turndown": "^5.0.5",
     "typescript": "^5.6.0"
   },
-  "publishConfig": {
-    "access": "public"
-  }
+  "private": true
 }

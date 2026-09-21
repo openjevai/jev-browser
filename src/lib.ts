@@ -178,22 +178,3 @@ export function pickAlternate(probabilities: Record<string, number> | undefined,
   }
   return null;
 }
-
-const STOP_WORDS = new Set([
-  "search", "wikipedia", "the", "a", "an", "article", "about", "for", "find", "stop", "when",
-  "you", "are", "on", "it", "and", "to", "of", "called", "page", "site", "website", "navigate",
-  "go", "open", "that", "this",
-]);
-
-/** Deterministic typing fallback when no small-LLM key is available. */
-export function heuristicQuery(task: string): string {
-  const words = task
-    .toLowerCase()
-    .replace(/[^a-z0-9\s-]/g, " ")
-    .split(/\s+/)
-    .filter((w) => w && !STOP_WORDS.has(w));
-  return words.slice(0, 6).join(" ");
-}
-
-/** jev-1.12 published pricing: input $0.042 per M tokens, output free. */
-export const PRICE_PER_MTOK_IN = 0.042;

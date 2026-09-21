@@ -1,10 +1,8 @@
 name: CI
-
 on:
   push:
     branches: [main]
   pull_request:
-
 jobs:
   test:
     runs-on: ubuntu-latest
@@ -13,21 +11,9 @@ jobs:
       - uses: actions/setup-node@v4
         with:
           node-version: 22
-      - run: npm ci
-        env:
-          JEV_BROWSER_SKIP_BROWSER_DOWNLOAD: "1"
+      - run: npm ci --ignore-scripts
+      # Use Google Chrome already installed on the hosted runner.
       - run: npm run typecheck
       - run: npm run build
       - run: npm test
-      # Live end-to-end navigation only when a TYPESAFE_API_KEY secret is set.
-      - name: Install Chromium for e2e
-        if: env.TYPESAFE_API_KEY != ''
-        env:
-          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
-        run: npx playwright install --with-deps chromium
-      - name: End-to-end (optional)
-        if: env.TYPESAFE_API_KEY != ''
-        env:
-          TYPESAFE_API_KEY: ${{ secrets.TYPESAFE_API_KEY }}
-          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
-        run: npm run test:e2e
+      # Live API calls remain opt-in and are never part of the default suite.

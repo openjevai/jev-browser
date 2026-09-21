@@ -84,8 +84,9 @@ Options:
                                        localhost
   -h, --help                           Show this help
 
-Result JSON is printed to stdout. Environment: TYPESAFE_API_KEY required;
-JEV_BROWSER_* vars configure models and the typing provider.
+Result JSON is printed to stdout. Required: JEV_API_URL (complete endpoint),
+JEV_API_KEY. Optional: JEV_MODEL. Ordinary text must come from a host agent.
+A run needing text exits with code 3; use MCP for resumable sessions.
 
 Without "run", this binary starts the MCP stdio server.`;
 
@@ -162,7 +163,7 @@ export async function runCli(argv: string[]): Promise<number> {
     delete result.screenshot_base64_jpeg;
 
     console.log(JSON.stringify(result, null, 2));
-    return result.status === "error" ? 1 : 0;
+    return result.status === "needs_input" ? 3 : result.status === "error" ? 1 : 0;
   } finally {
     if (tempRecordDir) {
       const fs = await import("node:fs/promises");

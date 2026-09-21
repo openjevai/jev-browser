@@ -12,6 +12,6 @@ Please do not open public issues for vulnerabilities. There is no bug bounty and
 
 ## Scope
 
-jev-browser runs a headless browser and makes network calls to the TypeSafe API and, when configured, one typing provider. It navigates to URLs you supply and can follow links from those pages. Treat the service environment it runs in as reachable by the pages it visits: run it in a container or restricted network if your environment has private endpoints you do not want touched.
+jev-browser runs a headless browser and makes model requests only to the configured Jev Decisions endpoint; ordinary text is supplied by the host agent. It navigates to URLs you supply and can follow links from those pages. Treat the service environment it runs in as reachable by the pages it visits: run it in a container or restricted network if your environment has private endpoints you do not want touched.
 
 Only the latest released version receives fixes. There is no support policy for older versions yet.

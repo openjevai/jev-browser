@@ -1,5 +1,37 @@
 # Changelog
 
+## 0.5.2 (local fork; not published)
+
+- Visible Chrome windows now use the native window viewport instead of a fixed 1024×640 emulated viewport, fixing blank areas after window resizing. Background mode retains its deterministic viewport.
+- Added an opt-in real desktop regression that grows and shrinks the native window and checks page layout plus batch reuse.
+
+## 0.5.1 (local fork; not published)
+
+- Default navigation reuses one browser/context and working tab; concurrent batch starts are serialized.
+- Unfinished input or paused tasks are preserved and return session_in_use instead of being overwritten.
+- Additional independent browsers require explicit new_instance=true (library: newInstance). Maximum remains four when explicitly requested.
+- Changes to credential/recording boundaries require closing the existing session first.
+
+## 0.5.0 (local fork; not published)
+
+Browser update: use the installed Google Chrome by default with an isolated temporary profile. Removed automatic Chromium downloads and the browser-install script. Optional executable-path override supports nonstandard installations.
+
+Launcher update: generated configurations resolve Node through the Agent PATH using a shell wrapper, with missing/old Node installation guidance; no machine-specific Node executable is embedded.
+
+Breaking changes:
+
+- All ordinary text comes from the host agent. Removed text-model SDKs, provider detection and keyword fallback.
+- Required inference configuration is now `JEV_API_URL` plus `JEV_API_KEY`; optional `JEV_MODEL`. Unified Bearer Decisions transport; old provider-specific wrappers are removed.
+- Persistent MCP sessions add `jev_resume`, `jev_continue`, `jev_read`, and `jev_close`. `jev_navigate` can return `needs_input` or `paused`.
+- One-shot CLI exits 3 when host text is needed; its session is closed. Library callers may provide `textProvider`.
+- Per-session serialization, single-use input IDs, pinned target validation, cumulative task budgets, idle cleanup and process shutdown handling.
+- Retained secret source checks and credential-session redaction/screenshot suppression.
+- Missing token accounting and all monetary estimates are null, not guessed zero-cost values.
+- Added local browser/MCP integration tests and configuration generators for Codex, Qoder and Claude Code.
+- Local package is private to prevent accidental publication under the upstream name.
+
+Historical upstream entries below describe previous versions, not the current configuration.
+
 ## Unreleased
 
 - Form controls now resolve an accessible name (AccName 1.2 precedence: `aria-labelledby` refs, `aria-label`, all associated native labels via the `.labels` API, then placeholder and title). Plain `<label for>` login forms no longer drop out of the action space, which previously made their inputs invisible and untypeable (#1).

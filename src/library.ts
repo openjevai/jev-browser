@@ -1,4 +1,3 @@
-// Public library entry, side-effect free: importing this module starts no
-// server and no CLI. The MCP server and CLI entry is index.ts (the bin).
-export { navigate } from "./navigate.js";
-export type { NavigateOptions, StepRecord, ConsoleEvent, JevUsage } from "./navigate.js";
+// Side-effect-free library entry.
+export { navigate, SessionManager } from "./navigate.js";
+export type { NavigateOptions, NavigationResult, ReadOptions, ContinueOptions, ManagerOptions, StepRecord, ConsoleEvent, JevUsage } from "./navigate.js";

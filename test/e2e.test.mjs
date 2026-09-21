@@ -1,5 +1,5 @@
 // End-to-end: spawn the built server over stdio and run real navigation tasks.
-// Skipped unless TYPESAFE_API_KEY is set. Requires Playwright Chromium.
+// Paid tests require JEV_API_URL and JEV_API_KEY; host text is supplied by this test harness. Requires Playwright Chromium.
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import http from "node:http";
@@ -9,7 +9,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StdioClientTransport } from "@modelcontextprotocol/sdk/client/stdio.js";
 
 const serverPath = fileURLToPath(new URL("../dist/index.js", import.meta.url));
-const hasKey = Boolean(process.env.TYPESAFE_API_KEY);
+const hasKey = Boolean(process.env.JEV_API_URL && process.env.JEV_API_KEY);
 
 // Minimal deterministic site: a multi-field form with a submit button (the
 // button carries no type attribute, so it defaults to submit inside the form),
@@ -89,13 +89,37 @@ async function withClient(fn, extraEnv = {}) {
     command: process.execPath,
     args: [serverPath],
     env: {
-      TYPESAFE_API_KEY: process.env.TYPESAFE_API_KEY ?? "",
-      ...(process.env.OPENROUTER_API_KEY ? { OPENROUTER_API_KEY: process.env.OPENROUTER_API_KEY } : {}),
-      ...(process.env.JEV_BROWSER_TYPE_MODEL ? { JEV_BROWSER_TYPE_MODEL: process.env.JEV_BROWSER_TYPE_MODEL } : {}),
+      ...process.env,
+      JEV_API_URL: process.env.JEV_API_URL ?? "",
+      JEV_API_KEY: process.env.JEV_API_KEY ?? "",
       ...extraEnv,
     },
   });
   await client.connect(transport);
+  // Simulate the host agent with explicit fixture answers, never a second model.
+  const call = client.callTool.bind(client);
+  client.callTool = async (request, schema, options) => {
+    let result = await call(request, schema, options);
+    if (request.name !== "jev_navigate" || result.isError) return result;
+    let body = payload(result);
+    const id = body.session_id;
+    try {
+      for (let turn = 0; turn < 100 && ["needs_input", "paused"].includes(body.status); turn++) {
+        if (body.status === "paused") result = await call({ name: "jev_continue", arguments: { session_id: id } }, schema, options);
+        else {
+          const label = body.pending_action.field_description;
+          const text = /Username/i.test(label) ? "tomsmith" : /First name/i.test(label) ? "Ada" :
+            /City/i.test(label) ? "Oslo" : /Search/i.test(label) ?
+              (/TypeSafe/i.test(request.arguments.task) ? "TypeSafe AI Jev introduction" : "ristretto") : undefined;
+          assert.notEqual(text, undefined, `Fixture needs an explicit host answer for ${label}`);
+          result = await call({ name: "jev_resume", arguments: { session_id: id, request_id: body.request_id, text } }, schema, options);
+        }
+        body = payload(result);
+      }
+      return result;
+    } finally { if (id) await call({ name: "jev_close", arguments: { session_id: id } }); }
+  };
+
   try {
     return await fn(client);
   } finally {
@@ -112,7 +136,7 @@ function payload(result) {
 test("lists the tool", { skip: !hasKey }, async () => {
   await withClient(async (client) => {
     const { tools } = await client.listTools();
-    assert.deepEqual(tools.map((t) => t.name), ["jev_navigate"]);
+    assert.deepEqual(tools.map((t) => t.name).sort(), ["jev_close", "jev_continue", "jev_navigate", "jev_read", "jev_resume"]);
   });
 });
 
@@ -188,7 +212,7 @@ test("clean termination on a hard page (informational)", { skip: !hasKey }, asyn
     // search box sits below a wall of promo links and the model may never reach
     // it; when either variant lands, clean termination is the most this test
     // can demand.
-    const typedOk = body.steps.some((s) => /(typed|searched) "/.test(s.detail ?? "") && !s.action_error);
+    const typedOk = body.steps.some((s) => /(typed|searched) via host-agent/.test(s.detail ?? "") && !s.action_error);
     const degraded =
       /50x|anomaly|challenge/i.test(body.final_url ?? "") ||
       /50x|Protection\. Privacy/i.test(body.final_title ?? "");
@@ -282,6 +306,7 @@ test("native selects choose by DOM index, even with filtered blank options", { s
 // ── Password fill ────────────────────────────────────────────────────────────
 import { mkdtemp, mkdir, writeFile, chmod, rm, stat } from "node:fs/promises";
 import { tmpdir } from "node:os";
+import { realpathSync } from "node:fs";
 import { join } from "node:path";
 
 const SECRET = "e2e 'p\"w'{&q=1"; // contains ', " and { so the aria snapshot serializer must both backslash-escape and YAML-quote the echoed name
@@ -326,7 +351,7 @@ function assertNoSecret(result, body) {
 }
 
 test("password fill: handoff file consumed, filled, never submitted, never leaked", { skip: !hasKey }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "jev-handoff-e2e-"));
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), "jev-handoff-e2e-"));
   await chmod(dir, 0o700);
   const file = join(dir, "pw.e2e");
   await writeFile(file, SECRET, { mode: 0o600 });
@@ -376,7 +401,7 @@ test("password fill: handoff file consumed, filled, never submitted, never leake
 });
 
 test("password fill: aria snapshots of an echoing page are scrubbed too", { skip: !hasKey }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "jev-handoff-e2e-"));
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), "jev-handoff-e2e-"));
   await chmod(dir, 0o700);
   const file = join(dir, "pw.aria");
   await writeFile(file, SECRET, { mode: 0o600 });
@@ -419,7 +444,7 @@ test("password fill: aria snapshots of an echoing page are scrubbed too", { skip
 });
 
 test("password fill: wrong-origin pages are refused and the value never lands", { skip: !hasKey }, async () => {
-  const dir = await mkdtemp(join(tmpdir(), "jev-handoff-e2e-"));
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), "jev-handoff-e2e-"));
   await chmod(dir, 0o700);
   const file = join(dir, "pw.e2e");
   await writeFile(file, SECRET, { mode: 0o600 });
@@ -547,7 +572,7 @@ test("password fill: PWDEBUG is refused before any browser or Jev work", async (
       "--password-file", "-",
       "--password-origin", "https://acme.com",
     ],
-    { env: { ...process.env, PWDEBUG: "1", TYPESAFE_API_KEY: "" } },
+    { env: { ...process.env, PWDEBUG: "1", JEV_API_KEY: "" } },
   );
   child.stdin.end();
   let stderr = "";
@@ -558,7 +583,7 @@ test("password fill: PWDEBUG is refused before any browser or Jev work", async (
 });
 
 test("password fill: misconfigured handoff files fail loudly, before any browser", async () => {
-  const dir = await mkdtemp(join(tmpdir(), "jev-handoff-e2e-"));
+  const dir = await mkdtemp(join(realpathSync(tmpdir()), "jev-handoff-e2e-"));
   await chmod(dir, 0o700);
   const loose = join(dir, "loose");
   await writeFile(loose, SECRET, { mode: 0o644 });
