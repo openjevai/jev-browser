@@ -57,7 +57,7 @@ node scripts/client-config.mjs claude
 https://openrouter.ai/api/alpha/decisions
 ```
 
-也支持 TypeSafe `https://api.typesafe.ai/v1/systemone` 或相同请求/响应协议的代理。不是普通 chat/completions 接口。代理模型名不同可设 `JEV_MODEL`。
+也支持 TypeSafe `https://api.typesafe.ai/v1/systemone`、OpenJEV `https://api.openjev.sh/v1/systemone`（默认模型 `openjev`）或相同请求/响应协议的代理。不是普通 chat/completions 接口。代理模型名不同可设 `JEV_MODEL`。
 
 包内不包含真实 Key。让用户在本机安全设置 Key，或经用户授权复用指定的现有配置。不要索取聊天中的 Key，不打印它，不放到命令行参数、安装日志、共享文件或 Git。未配置真实 Key 时只能报告本地安装通过，不能宣称真实服务联调成功。
 

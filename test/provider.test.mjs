@@ -7,6 +7,8 @@ const questions = { action: { type: 'choice', instructions: 'Pick', criteria: { 
 test('endpoint and model defaults, explicit overrides, and legacy migration', () => {
   assert.equal(resolveConfig({ JEV_API_URL: 'https://openrouter.ai/api/alpha/decisions', JEV_API_KEY: KEY }).model, 'typesafe/jev-1.13');
   assert.equal(resolveConfig({ JEV_API_URL: 'https://api.typesafe.ai/v1/systemone', JEV_API_KEY: KEY }).model, 'jev-latest');
+  assert.equal(resolveConfig({ JEV_API_URL: 'https://api.openjev.sh/v1/systemone', JEV_API_KEY: KEY }).model, 'openjev');
+  assert.equal(resolveConfig({ JEV_API_URL: 'https://api.openjev.sh/v1/systemone', JEV_API_KEY: KEY, JEV_MODEL: 'custom' }).model, 'custom');
   assert.equal(resolveConfig({ JEV_API_URL: 'https://proxy.example/decide', JEV_API_KEY: KEY, JEV_MODEL: 'custom' }).model, 'custom');
   for (const url of ['https://example.org', 'file:///test', 'https://user:pass@example.org/decide', 'https://example.org/a#b']) {
     assert.throws(() => resolveConfig({ JEV_API_URL: url, JEV_API_KEY: KEY }), /endpoint/);

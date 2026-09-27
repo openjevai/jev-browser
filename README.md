@@ -4,6 +4,8 @@
 
 Codex、Qoder、Claude Code 等宿主 Agent 理解任务、生成搜索词和表单内容、阅读结果并总结。Jev 只选择浏览器动作，Playwright 执行动作。全项目没有额外文字模型调用、关键词猜测、MCP sampling 或宿主登录凭据读取。
 
+> **OpenJEV support:** Jev is built by [TypeSafe](https://typesafe.ai). This fork keeps TypeSafe as the default and adds optional support for [OpenJEV](https://openjev.sh), a free community gateway to the same Jev model — set `JEV_API_URL=https://api.openjev.sh/v1/systemone` and `JEV_API_KEY` to your OpenJEV key (the default model becomes `openjev`; `JEV_MODEL` overrides it as before). Original project: https://github.com/wendaoheri/jev-browser by @wendaoheri.
+
 安装并注册 MCP 后，必填的模型配置只有：
 
 ```text
@@ -69,6 +71,7 @@ node scripts/client-config.mjs claude
 |---|---|---|
 | OpenRouter | `https://openrouter.ai/api/alpha/decisions` | `typesafe/jev-1.13` |
 | TypeSafe | `https://api.typesafe.ai/v1/systemone` | `jev-latest` |
+| OpenJEV | `https://api.openjev.sh/v1/systemone` | `openjev` |
 | 兼容代理 | 服务提供的完整 Decisions/System One 端点 | `jev-latest` |
 
 发送 `Authorization: Bearer <Key>`，请求体为 `{model, state, questions}`；不追加路径、不跟随 HTTP 重定向。代理必须支持同样的结构化 Decisions 请求和响应，不支持普通 `/chat/completions` 端点。

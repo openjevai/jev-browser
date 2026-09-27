@@ -25,7 +25,7 @@ export function resolveConfig(env: NodeJS.ProcessEnv = process.env): JevConfig {
     throw new Error("JEV_API_URL must be a complete HTTP(S) inference endpoint without credentials or a fragment.");
   }
   if (/[\r\n]/.test(env.JEV_API_KEY)) throw new Error("JEV_API_KEY must not contain line breaks.");
-  const model = env.JEV_MODEL?.trim() || (url.hostname === "openrouter.ai" ? "typesafe/jev-1.13" : "jev-latest");
+  const model = env.JEV_MODEL?.trim() || (url.hostname === "openrouter.ai" ? "typesafe/jev-1.13" : url.hostname === "api.openjev.sh" ? "openjev" : "jev-latest");
   return { url: url.href, key: env.JEV_API_KEY, model };
 }
 function object(value: unknown): value is Record<string, unknown> {
